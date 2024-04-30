@@ -10,6 +10,7 @@ To Run:
         • MAX USERS [number of users]
         • TIME OUT [number of seconds]
 	- Client: ./QRClient [Client Hostname]
+        • Input: 'qrcode_name.png' or 'close' or 'shutdown'
 	
 Info:
 
