@@ -14,11 +14,17 @@
 
 #include <arpa/inet.h>
 
-#define PORT "3490" // the port client will be connecting to
+#define PORT "2012" // the port client will be connecting to
 
 #define MAXDATASIZE 100 // max number of bytes we can get at once
 
-/// starter code used from beej's guide to network programming
+// Prototypes
+
+off_t getFileSize(char *file);
+void sendData(char *name, int sockfd);
+void getData(int sockfd);
+
+// beej starter code
 
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
@@ -31,27 +37,154 @@ void *get_in_addr(struct sockaddr *sa)
     return &(((struct sockaddr_in6 *)sa)->sin6_addr);
 }
 
-off_t get_file_size(char *file)
-{
+int main(int argc, char *argv[]) {
+    int sockfd, numbytes;
+    char buf[MAXDATASIZE];
+    struct addrinfo hints, *servinfo, *p;
+    int rv;
+    char s[INET6_ADDRSTRLEN];
+    int qrFD;
+    off_t sendingOffset;
+    int sentBytes;
+    off_t remainingData;
+    int fd;
+
+    if (argc < 2) {
+        fprintf(stderr, "Input Error: client_hostname\n");
+        exit(1);
+    }
+
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    if ((rv = getaddrinfo(argv[1], PORT, &hints, &servinfo)) != 0) {
+        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+        return 1;
+    }
+
+    // loop through all the results and connect to the first we can
+    for (p = servinfo; p != NULL; p = p->ai_next) {
+        if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
+            perror("client: socket");
+            continue;
+        }
+
+        if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
+            close(sockfd);
+            perror("client: connect");
+            continue;
+        }
+
+        break;
+    }
+
+    if (p == NULL) {
+        fprintf(stderr, "client: failed to connect\n");
+        return 2;
+    }
+
+    inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr), s, sizeof s);
+    printf("client: connecting to %s\n", s);
+
+    freeaddrinfo(servinfo); // all done with this structure
+
+    if ((numbytes = recv(sockfd, buf, MAXDATASIZE - 1, 0)) == -1) {
+        perror("recv");
+        exit(1);
+    }
+
+    buf[numbytes] = '\0';
+
+    printf("client: received '%s'\n", buf);
+
+    if (send(sockfd, "Hello, Server!\n", 14, 0) == -1) {
+        perror("send");
+    }
+
+    while (1) {
+
+        char input[100];
+        if ((scanf("%s", input) < 0)) {
+            perror("Input");
+            exit(0);
+        }
+
+        // Close
+        if (strcmp(input, "close") == 0) {
+            if (send(sockfd, "0", 1, 0) == -1) {
+                perror("send");
+            }
+
+            if ((numbytes = recv(sockfd, buf, 32, 0)) == -1) {
+                perror("recv");
+                exit(1);
+            }
+
+            buf[numbytes] = '\0';
+
+            printf("client: received '%s'\n", buf);
+
+            close(sockfd);
+            exit(0);
+        }
+
+        // Shutdown
+        else if (strcmp(input, "shutdown") == 0) {
+            if (send(sockfd, "1", 1, 0) == -1) {
+                perror("send");
+            }
+            memset(input, 0, strlen(input));
+        }
+
+        // PNG input
+        else if (strlen(input) > 0) {
+            off_t fileSize;
+            fileSize = getFileSize(input);
+
+            if (fileSize == 0) {
+                printf("Error: File not Found\n");
+            }
+            else {
+                if (send(sockfd, "2", 1, 0) == -1) {
+                    perror("send");
+                }
+                sendData(input, sockfd);
+                memset(input, 0, strlen(input));
+                getData(sockfd);
+            }
+        }
+    }
+
+    close(sockfd);
+
+    return 0;
+}
+
+/**
+ * Gets file size
+ * @param file input file
+ * @return size of file
+*/
+off_t getFileSize(char *file) {
     struct stat buf;
 
-    if (stat(file, &buf) == -1)
-    {
-        // perror("Get file size:");
-        // exit(EXIT_FAILURE);
-        return 0;
+    if (stat(file, &buf) == -1) {
+        perror("Get file size:");
+        exit(EXIT_FAILURE);
     }
 
     return buf.st_size;
 }
 
-// Function to receive data from client and print it
-void receive_and_print(int sockfd)
-{
+/**
+ * Gets client data to print
+ * @param sockfd client connection
+*/
+void getData(int sockfd) {
     // Receive the length of the data
     off_t length;
-    if (recv(sockfd, &length, sizeof(off_t), 0) == -1)
-    {
+    if (recv(sockfd, &length, sizeof(off_t), 0) == -1) {
         perror("recv length");
         exit(EXIT_FAILURE);
     }
@@ -68,13 +201,11 @@ void receive_and_print(int sockfd)
     }
 
     u_int32_t bytesReceivedSoFar = 0;
-    while (bytesReceivedSoFar < length)
-    {
+    while (bytesReceivedSoFar < length) {
         // Receive data from the server
         int bytesActuallyReceived = recv(sockfd, buffer, MAXDATASIZE, 0);
 
-        if (bytesActuallyReceived == -1)
-        {
+        if (bytesActuallyReceived == -1) {
             perror("recv data");
             exit(EXIT_FAILURE);
         }
@@ -85,7 +216,7 @@ void receive_and_print(int sockfd)
         bytesReceivedSoFar += bytesActuallyReceived;
     }
 
-    printf("client: received %d bytes of converted data from server\n", bytesReceivedSoFar);
+    printf("Received server bytes: %d\n", bytesReceivedSoFar);
 
     // Close the file
     fclose(file);
@@ -93,212 +224,57 @@ void receive_and_print(int sockfd)
     FILE *fileRead = fopen("received_data.txt", "rb");
     char string[255];
 
-    if (fileRead == NULL)
-    {
-        printf("null file");
+    if (fileRead == NULL) {
+        printf("File error");
     }
 
-    printf("QR code result:\n\n");
+    printf("QRCode Result:\n\n");
 
-    while (fgets(string, 255, fileRead) != NULL)
-    {
+    while (fgets(string, 255, fileRead) != NULL) {
         printf("%s", string);
     }
 
     fclose(fileRead);
 }
 
-void send_file_data(char *name, int sockfd)
-{
+/**
+ * Send client data to server
+ * 
+ * @param sockfd client connection
+*/
+void sendData(char *name, int sockfd) {
     off_t fileSize;
     FILE *qrFile;
 
-    // find file size given the file descriptor
-    fileSize = get_file_size(name);
+    // File size for file name
+    fileSize = getFileSize(name);
 
-    printf("File size: %ld\n", fileSize);
+    printf("File Size: %ld\n", fileSize);
 
-    // send file data
     qrFile = fopen(name, "r");
     char sendingBuf[fileSize];
     int sendingSize;
 
     bzero(sendingBuf, fileSize);
 
-    if (qrFile == NULL)
-    {
-        perror("opening file");
+    if (qrFile == NULL) {
+        perror("File error");
     }
 
-    // send file size first
-    if (send(sockfd, &fileSize, sizeof(off_t), 0) == -1)
-    {
-        perror("sending file size value");
+    // Send File size
+    if (send(sockfd, &fileSize, sizeof(off_t), 0) == -1) {
+        perror("File Size");
     }
 
-    printf("client: sending the file size %ld\n", fileSize);
+    printf("Sent File Size: %ld\n", fileSize);
 
-    // loop to send actual data
-    while ((sendingSize = fread(sendingBuf, 1, fileSize, qrFile)) > 0)
-    {
-        if (send(sockfd, sendingBuf, sendingSize, 0) == -1)
-        {
-            perror("sending file");
+    // Send all data
+    while ((sendingSize = fread(sendingBuf, 1, fileSize, qrFile)) > 0) {
+        if (send(sockfd, sendingBuf, sendingSize, 0) == -1) {
+            perror("Sending data");
         }
 
-        printf("client: sent %d bytes of inputted file to server\n", sendingSize);
+        printf("Sent bytes: %d\n", sendingSize);
         bzero(sendingBuf, fileSize);
     }
-}
-
-int main(int argc, char *argv[])
-{
-    int sockfd, numbytes;
-    char buf[MAXDATASIZE];
-    struct addrinfo hints, *servinfo, *p;
-    int rv;
-    char s[INET6_ADDRSTRLEN];
-    int qrFD;
-    off_t sendingOffset;
-    int sentBytes;
-    off_t remainingData;
-    int fd;
-
-    if (argc != 3)
-    {
-        fprintf(stderr, "usage: client hostname, file\n");
-        exit(1);
-    }
-
-    memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-
-    if ((rv = getaddrinfo(argv[1], PORT, &hints, &servinfo)) != 0)
-    {
-        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
-        return 1;
-    }
-
-    // loop through all the results and connect to the first we can
-    for (p = servinfo; p != NULL; p = p->ai_next)
-    {
-        if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1)
-        {
-            perror("client: socket");
-            continue;
-        }
-
-        if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1)
-        {
-            close(sockfd);
-            perror("client: connect");
-            continue;
-        }
-
-        break;
-    }
-
-    if (p == NULL)
-    {
-        fprintf(stderr, "client: failed to connect\n");
-        return 2;
-    }
-
-    inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr), s, sizeof s);
-    printf("client: connecting to %s\n", s);
-
-    freeaddrinfo(servinfo); // all done with this structure
-
-    if ((numbytes = recv(sockfd, buf, MAXDATASIZE - 1, 0)) == -1)
-    {
-        perror("recv");
-        exit(1);
-    }
-
-    buf[numbytes] = '\0';
-
-    printf("client: received '%s'\n", buf);
-
-    if (send(sockfd, "Hello, server!\n", 14, 0) == -1)
-    {
-        perror("send");
-    }
-
-    int doClose = 0;
-    while (doClose == 0)
-    {
-        // get command line input
-        char input[100];
-        if ((scanf("%s", input) < 0))
-        {
-            perror("reading input");
-            exit(0);
-        }
-
-        if (strcmp(input, "close") == 0)
-        {
-            // send that the client wants to close (0)
-            if (send(sockfd, "0", 1, 0) == -1)
-            {
-                perror("send");
-            }
-
-            if ((numbytes = recv(sockfd, buf, 32, 0)) == -1)
-            {
-                perror("recv");
-                exit(1);
-            }
-
-            buf[numbytes] = '\0';
-
-            printf("client: received '%s'\n", buf);
-
-            close(sockfd);
-            exit(0);
-        }
-        else if (strcmp(input, "shutdown") == 0)
-        {
-            // send that the client wants to shutdown (1)
-            if (send(sockfd, "1", 1, 0) == -1)
-            {
-                perror("send");
-            }
-            memset(input, 0, strlen(input));
-        }
-        else if (strlen(input) > 0)
-        {
-            // assume png is inputted, and send it if file size != 0 (2)
-            off_t fileSize;
-            fileSize = get_file_size(input);
-
-            if (fileSize == 0)
-            {
-                printf("Error code 1: Failure - no file found\n");
-            }
-
-            else
-            {
-                if (send(sockfd, "2", 1, 0) == -1)
-                {
-                    perror("send");
-                }
-                send_file_data(input, sockfd);
-                memset(input, 0, strlen(input));
-                receive_and_print(sockfd);
-            }
-        }
-    }
-
-    // while loop to receive things
-    while (1)
-    { // end when code 2 is received (timeout)
-
-        // receive url size and data
-        receive_and_print(sockfd);
-    }
-
-    close(sockfd);
-
-    return 0;
 }

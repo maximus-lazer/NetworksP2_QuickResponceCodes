@@ -1,11 +1,15 @@
 # NetworksP2_QuickResponceCodes
-CS3516 Networks Project 1
+CS3516 Networks Project 2
 Max Berman
 
 To Run:
-	- type "make" in terminal if program is not compiled
-    - Server: [insert]
-	- Client: [insert]
+	- type "make" or "make all" in terminal if program is not compiled
+    - Server: ./QRServer [option1, ..., optionN]
+        • PORT [port number]
+        • RATE [number requests] [number seconds]
+        • MAX USERS [number of users]
+        • TIME OUT [number of seconds]
+	- Client: ./QRClient [Client Hostname]
 	
 Info:
 
@@ -14,9 +18,3 @@ TCPEchoServer.c:
 
 TCPEchoClient.c:
     - TCP Client
-
-ResolveName.c:
-    - Resolves name
-
-HandleTCPClient.c:
-    - TCP Client handler

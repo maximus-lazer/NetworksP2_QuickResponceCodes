@@ -7,4 +7,4 @@ QRClient: TCPEchoClient.c
 	gcc TCPEchoClient.c -o QRClient
 
 clean:
-	rm -f QRClient QRServer
+	rm -f QRClient QRServer received* log.txt QRresult.txt
