@@ -19,3 +19,6 @@ TCPEchoServer.c:
 
 TCPEchoClient.c:
     - TCP Client
+
+log.txt:
+    - Server logs
